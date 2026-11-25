@@ -113,6 +113,32 @@
     </div>
     <button id="btn-start-dice" class="btn btn-primary btn-big" hidden>确认队名，开始 BP</button>
     <p class="muted small center-hint" id="setup-hint"></p>
+    <details class="rules-box" id="rules-box">
+      <summary>查看 BP 规则</summary>
+      <div class="rules-body">
+        <p class="rules-lead">双方队长投掷骰子，点数大者的队伍决定地图选择顺序（TEAM A 或 TEAM B）。</p>
+        <h4>BO1 地图选择流程</h4>
+        <ol>
+          <li>A、B 队轮流各 Ban 三张地图（A先B后）</li>
+          <li>剩下的最后一张地图为 BO1 对局地图</li>
+          <li>A队拥有最终地图的「选边」权</li>
+        </ol>
+        <h4>BO3 地图选择流程</h4>
+        <ol>
+          <li>A队 Ban 一张，B队 Ban 一张</li>
+          <li>A队选择第一张地图；B队选边并选择第二张地图；A队选第二张图边</li>
+          <li>A队 Ban 一张，B队 Ban 一张，剩下的为第三张地图</li>
+          <li>A队拥有第三张地图的「选边」权</li>
+        </ol>
+        <h4>BO5 地图选择流程</h4>
+        <ol>
+          <li>A队 Ban 一张，B队 Ban 一张</li>
+          <li>A队选图一；B队选边并选图二；A队选边并选图三</li>
+          <li>B队选边并选图四；A队选第四张图的边</li>
+          <li>剩下的为第五张地图，B队拥有「选边」权</li>
+        </ol>
+      </div>
+    </details>
   </section>
 
   <!-- 掷骰 -->

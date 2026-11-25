@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>瓦部赛事台 · 无畏契约 BP 工具</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img class="brand-badge" src="badge.webp" alt="社团徽章">
+    <span class="brand-name">瓦部赛事台</span>
+  </div>
+  <div class="brand-org">深圳技术大学 · 电竞社</div>
+</header>
+
+<!-- ============ 首页 ============ -->
+<main id="screen-home" class="container">
+  <section class="hero card">
+    <div class="hero-text">
+      <div class="eyebrow">SZTU ESPORTS · VALORANT</div>
+      <h1>无畏契约 Ban / Pick</h1>
+      <p class="hero-sub">深技大瓦部赛事平台 · 淘汰赛地图禁选工具</p>
+      <div class="hero-tags">
+        <span class="tag">BO1 / BO3 / BO5</span>
+        <span class="tag">骰子定先手</span>
+        <span class="tag">双人实时同步</span>
+      </div>
+    </div>
+    <div class="hero-deco" aria-hidden="true">
+      <div class="deco-grid"></div>
+      <div class="deco-poly"></div>
+      <div class="deco-poly2"></div>
+      <div class="deco-line"></div>
+    </div>
+  </section>
+
+  <section class="entry card">
+    <button id="btn-create" class="btn btn-primary btn-big">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      创建房间
+    </button>
+    <div class="entry-divider"><span>或输入房间码加入</span></div>
+    <div class="join-row">
+      <input id="input-code" class="input-code" maxlength="5" placeholder="ABCDE" autocomplete="off" spellcheck="false">
+      <button id="btn-join" class="btn btn-outline">加入房间</button>
+    </div>
+    <div id="home-error" class="form-error"></div>
+  </section>
+</main>
+
+<!-- ============ 房间 ============ -->
+<main id="screen-room" class="container" hidden>
+  <section class="roombar card">
+    <div class="roombar-left">
+      <span class="roombar-label">房间码</span>
+      <b class="roombar-code" id="room-code">—</b>
+    </div>
+    <button id="btn-copy" class="btn btn-outline btn-copy">复制邀请链接</button>
+    <span id="conn-status" class="conn-status"><i class="dot dot-on"></i>已连接</span>
+  </section>
+
+  <!-- 等待 -->
+  <section id="phase-waiting" class="card center-card" hidden>
+    <div class="pulse-ring"></div>
+    <h2>等待对手加入</h2>
+    <p class="muted">把房间码或邀请链接发给你的对手</p>
+    <div class="waiting-code" id="waiting-code">—</div>
+    <button id="btn-copy2" class="btn btn-outline">复制邀请链接</button>
+  </section>
+
+  <!-- 设置 -->
+  <section id="phase-setup" class="card" hidden>
+    <h2 class="section-title"><span class="title-bar"></span>赛前设置</h2>
+    <div class="setup-grid">
+      <div class="setup-players">
+        <label class="field-label">你的队伍名称</label>
+        <input id="input-name" class="input-name" maxlength="20" placeholder="输入队名">
+      </div>
+      <div class="setup-bo">
+        <label class="field-label">赛制</label>
+        <div class="bo-select" id="bo-select">
+          <button class="bo-btn" data-bo="bo1"><b>BO1</b><span>单图决胜</span></button>
+          <button class="bo-btn" data-bo="bo3"><b>BO3</b><span>三图两胜</span></button>
+          <button class="bo-btn" data-bo="bo5"><b>BO5</b><span>五图三胜</span></button>
+        </div>
+      </div>
+    </div>
+    <div class="setup-players-view">
+      <div class="mini-team" id="mini-a"><i class="tdot td-a"></i><span id="mini-a-name">A队</span><em id="mini-a-conn">未连接</em></div>
+      <span class="vs">VS</span>
+      <div class="mini-team" id="mini-b"><i class="tdot td-b"></i><span id="mini-b-name">B队</span><em id="mini-b-conn">未连接</em></div>
+    </div>
+    <button id="btn-start-dice" class="btn btn-primary btn-big" disabled>开始掷骰</button>
+    <p class="muted small">掷骰决定 BP 先后：点数大的一方先手</p>
+  </section>
+
+  <!-- 掷骰 -->
+  <section id="phase-dice" class="dice-wrap" hidden>
+    <div class="dice-side">
+      <div class="dice-team-label"><i class="tdot td-a"></i><span id="dice-name-a">A队</span></div>
+      <div class="dice" id="dice-a" data-team="A"><div class="dice-face" id="dice-face-a"><span class="pip"></span></div></div>
+      <div class="dice-hint" id="dice-hint-a">等待掷骰</div>
+    </div>
+    <div class="dice-mid">
+      <div class="dice-round" id="dice-round">第 1 轮</div>
+      <div class="dice-vs">VS</div>
+      <button id="btn-roll" class="btn btn-primary" hidden>掷骰子</button>
+    </div>
+    <div class="dice-side">
+      <div class="dice-team-label"><i class="tdot td-b"></i><span id="dice-name-b">B队</span></div>
+      <div class="dice" id="dice-b" data-team="B"><div class="dice-face" id="dice-face-b"><span class="pip"></span></div></div>
+      <div class="dice-hint" id="dice-hint-b">等待掷骰</div>
+    </div>
+  </section>
+
+  <!-- BP -->
+  <section id="phase-bp" class="bp-wrap" hidden>
+    <div class="bp-cols">
+      <aside class="team-panel panel-a" id="panel-a">
+        <div class="tp-head"><i class="tdot td-a"></i><span class="tp-name" id="tp-name-a">A队</span></div>
+        <div class="tp-body">
+          <div class="tp-sec"><h4>禁用</h4><ul id="tp-bans-a"></ul></div>
+          <div class="tp-sec"><h4>选图</h4><ul id="tp-picks-a"></ul></div>
+        </div>
+        <div class="tp-turn" id="tp-turn-a">等待</div>
+      </aside>
+
+      <div class="bp-main">
+        <div class="step-banner card" id="step-banner">
+          <span id="step-text">—</span>
+        </div>
+        <div class="map-grid" id="map-grid"></div>
+        <div class="side-pick card" id="side-pick" hidden>
+          <h3 id="side-title">选择起始阵营</h3>
+          <p class="muted small" id="side-sub">选图方已确定地图，你来决定开局阵营</p>
+          <div class="side-btns">
+            <button class="side-btn side-attack" data-side="attack">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 11-14h-7l1-6z"/></svg>
+              <b>进攻方</b><span>率先下包</span>
+            </button>
+            <button class="side-btn side-defense" data-side="defense">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/></svg>
+              <b>防守方</b><span>守卫点内</span>
+            </button>
+          </div>
+        </div>
+        <div class="seq-tracker card" id="seq-tracker"></div>
+      </div>
+
+      <aside class="team-panel panel-b" id="panel-b">
+        <div class="tp-head"><i class="tdot td-b"></i><span class="tp-name" id="tp-name-b">B队</span></div>
+        <div class="tp-body">
+          <div class="tp-sec"><h4>禁用</h4><ul id="tp-bans-b"></ul></div>
+          <div class="tp-sec"><h4>选图</h4><ul id="tp-picks-b"></ul></div>
+        </div>
+        <div class="tp-turn" id="tp-turn-b">等待</div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- 结果 -->
+  <section id="phase-done" class="card" hidden>
+    <h2 class="section-title"><span class="title-bar"></span>BP 结果</h2>
+    <div class="result-list" id="result-list"></div>
+    <div class="result-actions">
+      <button id="btn-again" class="btn btn-outline">重新 BP</button>
+      <button id="btn-home" class="btn btn-outline">返回首页</button>
+    </div>
+  </section>
+</main>
+
+<!-- 掷骰结果浮层 -->
+<div id="dice-overlay" class="overlay" hidden>
+  <div class="overlay-box card">
+    <div class="ov-eyebrow">DICE RESULT</div>
+    <div class="ov-dice">
+      <span class="ov-die ov-a" id="ov-die-a">?</span>
+      <span class="ov-vs">VS</span>
+      <span class="ov-die ov-b" id="ov-die-b">?</span>
+    </div>
+    <div class="ov-title" id="ov-title">—</div>
+  </div>
+</div>
+
+<!-- 断线提示 -->
+<div id="disc-toast" class="toast" hidden>⚠ 对方连接已断开，等待重连…</div>
+
+<footer class="footer">深技大瓦部赛事平台 · 赛事数据实时同步</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,13 +1,14 @@
 /* 自动对手模拟器：加入指定房间并自动完成所有回合 */
-/* 用法: node guest.js <房间码> [队名] [赛制] [服务器URL] */
+/* 用法: node guest.js <房间码> [队名] [赛制] [服务器WS地址]（赛制由房主设置，第4参数仅占位） */
 const WebSocket = require('ws');
 
 const code = process.argv[2];
 const name = process.argv[3] || '机械队';
-const bo = process.argv[4] || 'bo3';
 const base = process.argv[5] || 'ws://localhost:3000';
 const ws = new WebSocket(base.replace(/\/$/, '') + '/ws');
 let myTeam = null;
+
+if (!code) { console.error('用法: node guest.js <房间码> [队名] [赛制] [服务器WS地址]'); process.exit(1); }
 
 ws.on('open', () => {
   ws.send(JSON.stringify({ type: 'join', code: code.toUpperCase() }));
@@ -19,7 +20,6 @@ ws.on('message', (raw) => {
     myTeam = msg.team;
     console.log(`[guest] 已加入房间 ${msg.code}，身份 ${msg.team}`);
     ws.send(JSON.stringify({ type: 'name', name }));
-    ws.send(JSON.stringify({ type: 'bo', bo }));
   }
   if (msg.type === 'state') onState(msg.state);
 });
@@ -34,6 +34,13 @@ function onState(s) {
       console.log('[guest] 掷骰');
       ws.send(JSON.stringify({ type: 'roll' }));
     }, 600);
+  }
+  if (s.phase === 'setup' && myTeam === 'B' && s.bo && s.players.B.name && s.players.B.name !== 'B队' && lastIdx !== -3) {
+    lastIdx = -3;
+    setTimeout(() => {
+      console.log('[guest] 确认队名，开始 BP');
+      ws.send(JSON.stringify({ type: 'startDice' }));
+    }, 700);
   }
   if (s.phase === 'bp' && s.stepIndex !== lastIdx) {
     lastIdx = s.stepIndex;

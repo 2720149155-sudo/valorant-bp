@@ -20,7 +20,10 @@ const diceRun = {
 const $ = (id) => document.getElementById(id);
 
 const TEAM_NAME = { A: 'A队', B: 'B队' };
-const SIDE_TEXT = { attack: '进攻开局', defense: '防守开局' };
+const SIDE_LABEL = { attack: '进攻', defense: '防守' };
+const BO_TEXT = { bo1: 'BO1 · 单图决胜', bo3: 'BO3 · 三图两胜', bo5: 'BO5 · 五图三胜' };
+
+function otherTeam(t) { return t === 'A' ? 'B' : 'A'; }
 
 /* ---------- 连接 ---------- */
 
@@ -120,6 +123,7 @@ function render(state) {
   };
   for (const key in map) $(map[key]).hidden = key !== st.phase;
 
+  if (st.phase === 'waiting') renderWaiting();
   if (st.phase === 'setup') renderSetup();
   if (st.phase === 'dice') renderDice();
   if (st.phase === 'bp') renderBp();
@@ -139,24 +143,57 @@ function renderDisconnect() {
   if (!toastTimer) $('disc-toast').hidden = !disc;
 }
 
-/* ---------- 设置阶段 ---------- */
+/* ---------- 房主设置（等待对手） ---------- */
 
-function renderSetup() {
+function fillNameInput(sectionSel) {
+  const input = document.querySelector(sectionSel + ' .input-name');
+  if (!input || document.activeElement === input) return;
   const myName = st.players[myTeam].name;
-  const input = $('input-name');
-  if (document.activeElement !== input) {
-    const val = myName === TEAM_NAME[myTeam] ? '' : myName;
-    if (input.value !== val) input.value = val;
-  }
-  document.querySelectorAll('.bo-btn').forEach(b => {
+  const val = myName === TEAM_NAME[myTeam] ? '' : myName;
+  if (input.value !== val) input.value = val;
+}
+
+function renderWaiting() {
+  fillNameInput('#phase-waiting');
+  document.querySelectorAll('#phase-waiting .bo-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.bo === st.bo);
   });
-  $('btn-start-dice').disabled = !st.bo;
+  $('code-reveal').hidden = !st.bo;
+  $('no-bo-hint').hidden = !!st.bo;
+  $('waiting-code').textContent = st.code;
+}
+
+/* ---------- 赛前确认（双方就位） ---------- */
+
+function renderSetup() {
+  const isHost = myTeam === 'A';
+
+  $('bo-fixed').hidden = isHost;
+  $('bo-select-2').hidden = !isHost;
+  if (!isHost) $('bo-fixed').textContent = st.bo ? BO_TEXT[st.bo] : '等待房主选择赛制';
+  document.querySelectorAll('#phase-setup .bo-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.bo === st.bo);
+  });
+
+  fillNameInput('#phase-setup');
 
   $('mini-a-name').textContent = st.players.A.name;
   $('mini-b-name').textContent = st.players.B.name;
   setConnBadge('mini-a-conn', st.players.A.connected);
   setConnBadge('mini-b-conn', st.players.B.connected);
+
+  const startBtn = $('btn-start-dice');
+  if (!isHost) {
+    startBtn.hidden = false;
+    const named = st.players[myTeam].name && st.players[myTeam].name !== TEAM_NAME[myTeam];
+    startBtn.disabled = !(st.bo && named);
+    $('setup-hint').textContent = st.bo
+      ? '输入队名后点击开始，掷骰决定先后手'
+      : '等待房主确定赛制…';
+  } else {
+    startBtn.hidden = true;
+    $('setup-hint').textContent = '对方确认队名后将自动开始掷骰';
+  }
 }
 
 function setConnBadge(id, on) {
@@ -274,7 +311,7 @@ function renderBp() {
     $(`tp-picks-${t.toLowerCase()}`).innerHTML = picks.length
       ? picks.map(m => {
           const mm = st.maps[m.id];
-          const sideTxt = mm.side ? ` · ${SIDE_TEXT[mm.side]}` : '';
+          const sideTxt = mm.side ? ` · ${teamName(mm.sideBy)}${SIDE_LABEL[mm.side]}` : '';
           return `<li><i class="tdot td-${t === 'A' ? 'a' : 'b'}"></i>${m.zh}<span class="muted small">${sideTxt}</span></li>`;
         }).join('')
       : '<li class="muted small">—</li>';
@@ -358,7 +395,7 @@ function renderMapGrid(step) {
       card.classList.add('picked');
       addStamp(card, 'stamp-pick', 'PICK');
       addOrderBadge(card, mm.order, false);
-      if (mm.side) addBottomChip(card, null, mm.side);
+      if (mm.side) addBottomChip(card, null, mm.side, mm.sideBy);
     } else if (mm.status === 'decider') {
       card.classList.add('decider');
       addStamp(card, 'stamp-gold', '决胜图');
@@ -366,7 +403,7 @@ function renderMapGrid(step) {
     } else if (mm.status === 'match') {
       card.classList.add('match');
       addStamp(card, 'stamp-gold', '比赛地图');
-      if (mm.side) addBottomChip(card, null, mm.side);
+      if (mm.side) addBottomChip(card, null, mm.side, mm.sideBy);
     }
     grid.appendChild(card);
   }
@@ -386,13 +423,14 @@ function addOrderBadge(card, n, gold) {
   card.appendChild(b);
 }
 
-function addBottomChip(card, text, side) {
+function addBottomChip(card, text, side, sideBy) {
   const chip = document.createElement('div');
   chip.className = 'map-side';
   if (side) {
+    const label = SIDE_LABEL[side];
     chip.innerHTML = side === 'attack'
-      ? `<span class="sa">进攻开局</span>`
-      : `<span class="sd">防守开局</span>`;
+      ? `<span class="sa">${label} · ${teamName(sideBy)}</span>`
+      : `<span class="sd">${label} · ${teamName(sideBy)}</span>`;
   } else {
     chip.textContent = text;
   }
@@ -473,17 +511,19 @@ function renderDone() {
 
     const meta = document.createElement('div');
     meta.className = 'rr-meta';
-    let by = '', sideTxt = '';
+    let by = '';
     if (mm.status === 'picked') by = `${teamName(mm.by)} 选图`;
     else if (mm.status === 'match') by = '六禁一剩';
     else by = '剩余决胜';
+    let sidesHtml = '';
     if (mm.side) {
-      const sideName = mm.side === 'attack' ? '进攻' : '防守';
-      sideTxt = `${teamName(mm.sideBy)} ${sideName}开局`;
+      const atk = mm.side === 'attack' ? mm.sideBy : otherTeam(mm.sideBy);
+      const def = otherTeam(atk);
+      sidesHtml = `<span class="rr-chip rr-atk">进攻 · ${teamName(atk)}</span><span class="rr-chip rr-def">防守 · ${teamName(def)}</span>`;
     } else if (mm.status === 'decider') {
-      sideTxt = '开局阵营由比赛内刀局决定';
+      sidesHtml = `<span class="rr-chip rr-knife">开局阵营由比赛内刀局决定</span>`;
     }
-    meta.innerHTML = `<div class="rr-by">${by}</div><div class="rr-side">${sideTxt}</div>`;
+    meta.innerHTML = `<div class="rr-by">${by}</div><div class="rr-sides">${sidesHtml}</div>`;
     row.appendChild(meta);
 
     list.appendChild(row);
@@ -546,15 +586,22 @@ $('input-code').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') $('btn-join').click();
 });
 $('input-code').addEventListener('input', (e) => {
+  if (e.isComposing) return;
+  const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (v !== e.target.value) e.target.value = v;
+});
+$('input-code').addEventListener('compositionend', (e) => {
   e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 });
 
 $('btn-copy').onclick = copyLink;
 $('btn-copy2').onclick = copyLink;
 
-$('input-name').addEventListener('input', (e) => {
-  clearTimeout(nameTimer);
-  nameTimer = setTimeout(() => send({ type: 'name', name: e.target.value }), 350);
+document.querySelectorAll('.input-name').forEach(inp => {
+  inp.addEventListener('input', (e) => {
+    clearTimeout(nameTimer);
+    nameTimer = setTimeout(() => send({ type: 'name', name: e.target.value }), 350);
+  });
 });
 
 document.querySelectorAll('.bo-btn').forEach(b => {

@@ -187,7 +187,8 @@ function handleMsg(ws, raw) {
       break;
 
     case 'bo': {
-      if (room.phase !== 'setup') return;
+      if (team !== 'A') return;
+      if (room.phase !== 'waiting' && room.phase !== 'setup') return;
       const v = String(msg.bo || '');
       if (['bo1', 'bo3', 'bo5'].includes(v)) room.bo = v;
       broadcast(room);

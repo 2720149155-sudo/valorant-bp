@@ -171,16 +171,19 @@ input { font-family: inherit; }
 .dot-on { background: #22C55E; box-shadow: 0 0 0 3px rgba(34,197,94,.18); }
 .dot-off { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
 
-/* ============ 等待 ============ */
-.center-card { padding: 60px 30px; text-align: center; position: relative; overflow: hidden; }
-.center-card::before {
-  content: ''; position: absolute; inset: 0;
-  background-image: var(--dot-grid); background-size: 20px 20px;
-  opacity: .6;
+/* ============ 房主设置 / 等待 ============ */
+#phase-waiting { padding: 30px; }
+.center-hint { text-align: center; }
+.reveal-box {
+  margin-top: 24px; padding-top: 22px; text-align: center;
+  border-top: 1px dashed var(--border-strong);
 }
-.center-card > * { position: relative; }
-.center-card h2 { color: var(--navy); font-size: 24px; margin-bottom: 8px; }
-.center-card .muted { margin-bottom: 22px; }
+.reveal-box .waiting-code { margin-bottom: 22px; }
+.wait-line {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-top: 18px; color: var(--text-3); font-size: 13px;
+}
+.wait-line .pulse-ring { width: 10px; height: 10px; margin: 0; }
 .waiting-code {
   font-size: 44px; font-weight: 900; letter-spacing: 12px; color: var(--blue);
   font-family: "Consolas", monospace; margin-bottom: 26px;
@@ -198,8 +201,14 @@ input { font-family: inherit; }
   100% { transform: scale(2.2); opacity: 0; }
 }
 
-/* ============ 设置 ============ */
+/* ============ 赛前确认 ============ */
 #phase-setup { padding: 30px; }
+.bo-fixed {
+  padding: 13px; text-align: center; font-weight: 800; font-size: 15px;
+  color: var(--navy);
+  background: linear-gradient(180deg, #FAFBFF, #F4F6FB);
+  border: 1px solid var(--border); border-radius: 10px;
+}
 .section-title {
   display: flex; align-items: center; gap: 10px;
   font-size: 18px; color: var(--navy); font-weight: 800; margin-bottom: 22px;
@@ -476,7 +485,11 @@ input { font-family: inherit; }
 .rr-name span { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
 .rr-meta { margin-left: auto; text-align: right; }
 .rr-meta .rr-by { font-size: 13px; font-weight: 700; color: var(--text-2); }
-.rr-meta .rr-side { font-size: 12px; color: var(--text-3); margin-top: 3px; }
+.rr-sides { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 5px; }
+.rr-chip { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 6px; }
+.rr-atk { background: #FEE2E2; color: #B91C1C; }
+.rr-def { background: var(--blue-soft); color: var(--blue-deep); }
+.rr-knife { background: #F1F5F9; color: var(--text-3); }
 .result-actions { display: flex; gap: 12px; }
 
 /* ============ 浮层 / 提示 ============ */

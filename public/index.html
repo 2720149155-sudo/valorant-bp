@@ -44,7 +44,7 @@
     </button>
     <div class="entry-divider"><span>或输入房间码加入</span></div>
     <div class="join-row">
-      <input id="input-code" class="input-code" maxlength="5" placeholder="ABCDE" autocomplete="off" spellcheck="false">
+      <input id="input-code" class="input-code" maxlength="5" placeholder="ABCDE" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <button id="btn-join" class="btn btn-outline">加入房间</button>
     </div>
     <div id="home-error" class="form-error"></div>
@@ -62,24 +62,15 @@
     <span id="conn-status" class="conn-status"><i class="dot dot-on"></i>已连接</span>
   </section>
 
-  <!-- 等待 -->
-  <section id="phase-waiting" class="card center-card" hidden>
-    <div class="pulse-ring"></div>
-    <h2>等待对手加入</h2>
-    <p class="muted">把房间码或邀请链接发给你的对手</p>
-    <div class="waiting-code" id="waiting-code">—</div>
-    <button id="btn-copy2" class="btn btn-outline">复制邀请链接</button>
-  </section>
-
-  <!-- 设置 -->
-  <section id="phase-setup" class="card" hidden>
-    <h2 class="section-title"><span class="title-bar"></span>赛前设置</h2>
+  <!-- 房主设置 -->
+  <section id="phase-waiting" class="card" hidden>
+    <h2 class="section-title"><span class="title-bar"></span>创建 BP 房间</h2>
     <div class="setup-grid">
-      <div class="setup-players">
+      <div>
         <label class="field-label">你的队伍名称</label>
-        <input id="input-name" class="input-name" maxlength="20" placeholder="输入队名">
+        <input class="input-name" maxlength="20" placeholder="输入队名（可选）">
       </div>
-      <div class="setup-bo">
+      <div>
         <label class="field-label">赛制</label>
         <div class="bo-select" id="bo-select">
           <button class="bo-btn" data-bo="bo1"><b>BO1</b><span>单图决胜</span></button>
@@ -88,13 +79,40 @@
         </div>
       </div>
     </div>
+    <p id="no-bo-hint" class="muted small center-hint">选择赛制后将生成邀请链接</p>
+    <div id="code-reveal" class="reveal-box" hidden>
+      <p class="muted small">邀请链接已生成，发送给对手</p>
+      <div class="waiting-code" id="waiting-code">—</div>
+      <button id="btn-copy2" class="btn btn-outline">复制邀请链接</button>
+      <div class="wait-line"><span class="pulse-ring"></span>等待对手加入…</div>
+    </div>
+  </section>
+
+  <!-- 赛前确认（双方就位） -->
+  <section id="phase-setup" class="card" hidden>
+    <h2 class="section-title"><span class="title-bar"></span>赛前确认</h2>
+    <div class="setup-grid">
+      <div>
+        <label class="field-label">赛制</label>
+        <div class="bo-fixed" id="bo-fixed" hidden>—</div>
+        <div class="bo-select" id="bo-select-2" hidden>
+          <button class="bo-btn" data-bo="bo1"><b>BO1</b><span>单图决胜</span></button>
+          <button class="bo-btn" data-bo="bo3"><b>BO3</b><span>三图两胜</span></button>
+          <button class="bo-btn" data-bo="bo5"><b>BO5</b><span>五图三胜</span></button>
+        </div>
+      </div>
+      <div>
+        <label class="field-label">你的队伍名称</label>
+        <input class="input-name" maxlength="20" placeholder="输入队名">
+      </div>
+    </div>
     <div class="setup-players-view">
       <div class="mini-team" id="mini-a"><i class="tdot td-a"></i><span id="mini-a-name">A队</span><em id="mini-a-conn">未连接</em></div>
       <span class="vs">VS</span>
       <div class="mini-team" id="mini-b"><i class="tdot td-b"></i><span id="mini-b-name">B队</span><em id="mini-b-conn">未连接</em></div>
     </div>
-    <button id="btn-start-dice" class="btn btn-primary btn-big" disabled>开始掷骰</button>
-    <p class="muted small">掷骰决定 BP 先后：点数大的一方先手</p>
+    <button id="btn-start-dice" class="btn btn-primary btn-big" hidden>确认队名，开始 BP</button>
+    <p class="muted small center-hint" id="setup-hint"></p>
   </section>
 
   <!-- 掷骰 -->

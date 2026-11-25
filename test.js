@@ -54,9 +54,9 @@ function send(ws, obj) { ws.send(JSON.stringify(obj)); }
   send(host, { type: 'name', name: '电子队' });
   await waitState(host, s => s.players.A.name === '电子队', 'A 名称同步');
   send(guest, { type: 'name', name: '机械队' });
-  send(guest, { type: 'bo', bo: 'bo3' });
+  send(host, { type: 'bo', bo: 'bo3' });
   const s3 = await waitState(host, s => s.bo === 'bo3' && s.players.B.name === '机械队', 'BO3 + 名称同步');
-  assert(s3.bo === 'bo3', '赛制为 BO3');
+  assert(s3.bo === 'bo3', '赛制为 BO3（房主设置）');
 
   console.log('== 掷骰 ==');
   send(host, { type: 'startDice' });

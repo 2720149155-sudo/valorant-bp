@@ -2,6 +2,8 @@
 
 深圳技术大学电竞社瓦部赛事平台的 Ban / Pick 工具。两名玩家实时同步进行地图禁选，支持 BO1 / BO3 / BO5，掷骰决定先手。
 
+**线上地址：https://valorant-bp-hg2g.onrender.com**
+
 ## 功能
 
 - **房间制**：一方创建房间生成 5 位房间码，另一方通过链接或房间码加入
@@ -24,34 +26,17 @@ npm start
 
 本地测试（可选）：
 - `node test.js` — 自动化端到端测试（需先启动服务器）
-- `node guest.js <房间码> [队名] [赛制]` — 模拟一个自动操作的对手
+- `node guest.js <房间码> [队名] [赛制] [服务器WS地址]` — 模拟一个自动操作的对手
 
-## 部署（免费方案）
+## 部署（已完成 · Render 免费版）
 
-### 方案 A：Claw Cloud Run（推荐，国内访问快）
-
-每月免费额度足够个人赛事使用，无休眠。
-
-1. 注册 [Claw Cloud Run](https://run.claw.cloud/)（需 GitHub 账号注册满 180 天）
-2. App Launchpad → 创建应用
-3. 镜像：`node:24-alpine`，启动命令：`sh -c "npm install --omit=dev && node server.js"`
-   （或本地构建镜像推送）
-4. 端口填 `3000`，开启公网访问
-
-### 方案 B：Render（国际平台）
-
-1. 把项目推到 GitHub 仓库
-2. [Render](https://render.com/) → New → Web Service，连接仓库
-3. Build: `npm install`，Start: `npm start`
-4. 免费版 15 分钟无访问会休眠，冷启动约 30-60 秒
-
-### 方案 C：任意 VPS / 服务器
-
-```bash
-npm install
-PORT=8080 node server.js
-```
-配合 nginx 反代或直接开放端口即可。数据在内存中，重启后房间清空（BP 进行中请勿重启）。
+- 仓库：https://github.com/2720149155-sudo/valorant-bp
+- 地址：https://valorant-bp-hg2g.onrender.com（新加坡区域，0.1 CPU / 512MB 免费档）
+- Build：`npm install`，Start：`npm run start`
+- 15 分钟无访问会休眠，首次打开约慢 30-60 秒；比赛前提前点开即可
+- 更新代码：`git push` 到 main 分支，Render 自动重新部署
+- 保持常驻（可选）：[UptimeRobot](https://uptimerobot.com/) 免费版每 5 分钟 GET `/api/health`
+- 备选：阿里云学生券轻量服务器（国内速度更快、不休眠）
 
 ## 项目结构
 

@@ -1,14 +1,12 @@
 /* 自动对手模拟器：加入指定房间并自动完成所有回合 */
+/* 用法: node guest.js <房间码> [队名] [赛制] [服务器URL] */
 const WebSocket = require('ws');
-const readline = require('readline');
 
 const code = process.argv[2];
 const name = process.argv[3] || '机械队';
 const bo = process.argv[4] || 'bo3';
-
-if (!code) { console.error('用法: node guest.js <房间码> [队名] [赛制]'); process.exit(1); }
-
-const ws = new WebSocket('ws://localhost:3000/ws');
+const base = process.argv[5] || 'ws://localhost:3000';
+const ws = new WebSocket(base.replace(/\/$/, '') + '/ws');
 let myTeam = null;
 
 ws.on('open', () => {

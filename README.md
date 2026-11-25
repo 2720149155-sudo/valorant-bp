@@ -33,9 +33,9 @@ npm start
 - 仓库：https://github.com/2720149155-sudo/valorant-bp
 - 地址：https://valorant-bp-hg2g.onrender.com（新加坡区域，0.1 CPU / 512MB 免费档）
 - Build：`npm install`，Start：`npm run start`
-- 15 分钟无访问会休眠，首次打开约慢 30-60 秒；比赛前提前点开即可
+- 15 分钟无访问会休眠——已配置 UptimeRobot 免费版每 5 分钟自动 ping，服务常驻
 - 更新代码：`git push` 到 main 分支，Render 自动重新部署
-- 保持常驻（可选）：[UptimeRobot](https://uptimerobot.com/) 免费版每 5 分钟 GET `/api/health`
+- 保活监控：https://dashboard.uptimerobot.com （GitHub 登录 2720149155-sudo）
 - 备选：阿里云学生券轻量服务器（国内速度更快、不休眠）
 
 ## 项目结构

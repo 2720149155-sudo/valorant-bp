@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: valorant-bp
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm start

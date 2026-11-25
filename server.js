@@ -51,12 +51,14 @@ function buildSteps(bo, first) {
     push('pick', first); push('side', second);
     push('pick', second); push('side', first);
     push('ban', first); push('ban', second);
+    push('side', first);
   } else if (bo === 'bo5') {
     push('ban', first); push('ban', second);
     push('pick', first); push('side', second);
     push('pick', second); push('side', first);
     push('pick', first); push('side', second);
     push('pick', second); push('side', first);
+    push('side', second);
   }
   return steps;
 }
@@ -119,7 +121,7 @@ function sideTarget(room) {
 function finalize(room) {
   const avail = Object.entries(room.maps).filter(([, m]) => m.status === 'available');
   for (const [id] of avail) {
-    room.maps[id] = { status: room.bo === 'bo1' ? 'match' : 'decider' };
+    room.maps[id].status = room.bo === 'bo1' ? 'match' : 'decider';
   }
   room.phase = 'done';
 }
@@ -218,11 +220,19 @@ function handleMsg(ws, raw) {
           a.dice = null; b.dice = null;
         } else {
           room.diceWinner = a.dice > b.dice ? 'A' : 'B';
-          room.phase = 'bp';
-          room.steps = buildSteps(room.bo, room.diceWinner);
-          room.stepIndex = 0;
+          room.phase = 'order';
         }
       }
+      broadcast(room);
+      break;
+    }
+
+    case 'order': {
+      if (room.phase !== 'order' || team !== room.diceWinner) return;
+      const first = msg.role === 'B' ? other(room.diceWinner) : room.diceWinner;
+      room.steps = buildSteps(room.bo, first);
+      room.stepIndex = 0;
+      room.phase = 'bp';
       broadcast(room);
       break;
     }

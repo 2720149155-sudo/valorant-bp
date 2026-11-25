@@ -110,7 +110,7 @@ function render(state) {
     if (!st.players[t].name) st.players[t].name = TEAM_NAME[t];
   }
 
-  if (lastPhase === 'dice' && st.phase === 'bp') {
+  if (lastPhase === 'dice' && (st.phase === 'order' || st.phase === 'bp')) {
     showDiceOverlay();
   }
   if (lastPhase === 'dice' && st.phase === 'dice' && prevDiceRound !== null && prevDiceRound !== st.diceRound) {
@@ -119,13 +119,14 @@ function render(state) {
 
   const map = {
     waiting: 'phase-waiting', setup: 'phase-setup', dice: 'phase-dice',
-    bp: 'phase-bp', done: 'phase-done',
+    order: 'phase-order', bp: 'phase-bp', done: 'phase-done',
   };
   for (const key in map) $(map[key]).hidden = key !== st.phase;
 
   if (st.phase === 'waiting') renderWaiting();
   if (st.phase === 'setup') renderSetup();
   if (st.phase === 'dice') renderDice();
+  if (st.phase === 'order') renderOrder();
   if (st.phase === 'bp') renderBp();
   if (st.phase === 'done') renderDone();
 
@@ -275,11 +276,22 @@ function showDiceOverlay() {
   $('ov-die-b').textContent = b.dice;
   const win = st.diceWinner;
   const name = teamName(win);
-  $('ov-title').textContent = `${name} 获得先手！`;
+  $('ov-title').textContent = `${name} 获得选择权！`;
   $('ov-title').style.color = win === 'A' ? 'var(--blue)' : 'var(--red)';
   const ov = $('dice-overlay');
   ov.hidden = false;
   setTimeout(() => { ov.hidden = true; }, 2200);
+}
+
+/* ---------- 选择 BP 顺序 ---------- */
+
+function renderOrder() {
+  const win = st.diceWinner;
+  const name = teamName(win);
+  const isWinner = myTeam === win;
+  $('order-winner-text').innerHTML = `<span style="color:${win === 'A' ? 'var(--blue)' : 'var(--red)'}">${name}</span> 掷骰获胜，可决定先禁先选或后禁后选`;
+  $('order-btns').hidden = !isWinner;
+  $('order-wait').hidden = isWinner;
 }
 
 /* ---------- BP 阶段 ---------- */
@@ -341,7 +353,9 @@ function renderBp() {
     let txt;
     if (step.type === 'ban') txt = `${n} 禁用一张地图`;
     else if (step.type === 'pick') txt = `${n} 选择一张地图`;
-    else txt = `${n} 选择起始阵营`;
+    else txt = isFinalSideStep()
+      ? `${n} 为${st.bo === 'bo1' ? '比赛地图' : '决胜图'}选择阵营`
+      : `${n} 选择起始阵营`;
     const mine = step.team === myTeam;
     $('step-text').innerHTML = `${dot}<span>${txt}${mine ? '（你）' : ''}</span>`;
     banner.classList.toggle('my-step', mine);
@@ -400,6 +414,7 @@ function renderMapGrid(step) {
       card.classList.add('decider');
       addStamp(card, 'stamp-gold', '决胜图');
       addOrderBadge(card, maxOrder + 1, true);
+      if (mm.side) addBottomChip(card, null, mm.side, mm.sideBy);
     } else if (mm.status === 'match') {
       card.classList.add('match');
       addStamp(card, 'stamp-gold', '比赛地图');
@@ -437,6 +452,16 @@ function addBottomChip(card, text, side, sideBy) {
   card.appendChild(chip);
 }
 
+function isFinalSideStep() {
+  if (!st || st.phase !== 'bp') return false;
+  const step = st.steps[st.stepIndex];
+  if (!step || step.type !== 'side') return false;
+  return !st.mapsMeta.some(m => {
+    const mm = st.maps[m.id];
+    return mm && mm.status === 'picked' && !mm.side;
+  });
+}
+
 function renderSidePick(step) {
   const panel = $('side-pick');
   const show = !!step && step.type === 'side';
@@ -444,9 +469,13 @@ function renderSidePick(step) {
   if (!show) return;
   const n = st.players[step.team].name;
   const mine = step.team === myTeam;
-  $('side-title').textContent = mine ? `${n}，请选择起始阵营` : `${n} 正在选择起始阵营…`;
+  const final = isFinalSideStep();
+  const mapLabel = st.bo === 'bo1' ? '比赛地图' : '决胜图';
+  $('side-title').textContent = mine
+    ? `${n}，请选择${final ? mapLabel : ''}阵营`
+    : `${n} 正在选择${final ? mapLabel : ''}阵营…`;
   $('side-sub').textContent = mine
-    ? '对方选图后，由你决定该图的开局阵营'
+    ? (final ? `${mapLabel}已确定，由你决定开局攻防` : '对方选图后，由你决定该图的开局阵营')
     : '等待对方选择';
   panel.querySelectorAll('.side-btn').forEach(b => {
     b.style.pointerEvents = mine ? '' : 'none';
@@ -463,7 +492,10 @@ function renderSeq(step) {
     if (s.team === 'B') chip.classList.add('b-chip');
     if (i < st.stepIndex) chip.classList.add('done');
     if (i === st.stepIndex) chip.classList.add('current');
-    const label = s.type === 'ban' ? '禁' : s.type === 'pick' ? '选' : '方';
+    let label;
+    if (s.type === 'ban') label = '禁';
+    else if (s.type === 'pick') label = '选';
+    else label = (i === st.steps.length - 1) ? '决' : '边';
     chip.innerHTML = `<i class="sc-dot sc-${s.team === 'A' ? 'a' : 'b'}"></i>${label}`;
     el.appendChild(chip);
   });
@@ -609,6 +641,10 @@ document.querySelectorAll('.bo-btn').forEach(b => {
 });
 
 $('btn-start-dice').onclick = () => send({ type: 'startDice' });
+
+document.querySelectorAll('.order-btn').forEach(b => {
+  b.onclick = () => send({ type: 'order', role: b.dataset.role });
+});
 
 function tryRoll() {
   if (st && st.phase === 'dice' && !st.players[myTeam].rolled) {

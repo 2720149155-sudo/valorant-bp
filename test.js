@@ -65,18 +65,10 @@ function send(ws, obj) { ws.send(JSON.stringify(obj)); }
   // 掷骰直到分出胜负（可能平局重掷）
   let bpState = null;
   for (let round = 0; round < 20 && !bpState; round++) {
-    const cur = await new Promise((resolve) => {
-      const h = (raw) => { resolve(JSON.parse(raw.toString())); host.removeListener('message', h); };
-      host.once('message', h);
-      send(host, { type: 'roll' });
-      send(guest, { type: 'roll' });
-      // 读最后一条 state
-      setTimeout(() => resolve(null), 100);
-    });
-    // 简化：直接等 host 收到 phase 变化或 dice 重置
-    const done = await waitState(host, s => s.phase === 'bp', `掷骰分出胜负(第${round + 1}轮)`, 3000).catch(() => null);
-    if (done) { bpState = done; break; }
-    // 平局重掷：重置 rolled
+    send(host, { type: 'roll' });
+    send(guest, { type: 'roll' });
+    const orderState = await waitState(host, s => s.phase === 'order', `掷骰分出胜负(第${round + 1}轮)`, 3000).catch(() => null);
+    if (orderState) { bpState = orderState; break; }
     await new Promise(r => setTimeout(r, 300));
     const sNow = await new Promise((resolve) => {
       send(host, { type: 'name', name: '电子队' }); // 触发一次 state 广播
@@ -86,13 +78,23 @@ function send(ws, obj) { ws.send(JSON.stringify(obj)); }
       };
       host.on('message', h);
     });
-    if (sNow.phase === 'bp') { bpState = sNow; break; }
+    if (sNow.phase === 'order') { bpState = sNow; break; }
   }
-  assert(bpState && bpState.phase === 'bp', `掷骰完成，先手: ${bpState ? bpState.diceWinner : '?'}`);
+  assert(bpState && bpState.phase === 'order', `掷骰完成，选择权: ${bpState ? bpState.diceWinner : '?'}`);
   assert(bpState && bpState.diceWinner, 'diceWinner 已确定');
-  console.log(`   A骰=${bpState.players.A.dice} B骰=${bpState.players.B.dice} 先手=${bpState.diceWinner}`);
+  console.log(`   A骰=${bpState.players.A.dice} B骰=${bpState.players.B.dice} 胜方=${bpState.diceWinner}`);
 
-  console.log('== BP 流程（BO3: 禁禁选方选方禁禁）==');
+  console.log('== 掷骰胜方选择 BP 顺序 ==');
+  // 非胜方尝试选择应被拒绝
+  const loser = bpState.diceWinner === 'A' ? 'B' : 'A';
+  send(loser === 'A' ? host : guest, { type: 'order', role: 'A' });
+  const sNoOrder = await waitState(host, st => st.phase === 'bp', '非胜方选顺序被拒（等待超时）', 1200).catch(() => null);
+  assert(sNoOrder === null, '非胜方选择顺序被拒绝');
+  // 胜方选择先禁先选（A）
+  send(bpState.diceWinner === 'A' ? host : guest, { type: 'order', role: 'A' });
+  bpState = await waitState(host, s => s.phase === 'bp', '胜方选择顺序进入 BP');
+
+  console.log('== BP 流程（BO3: 禁禁选边选边禁禁+决胜图选边）==');
   const first = bpState.diceWinner;
   const second = first === 'A' ? 'B' : 'A';
   const mapIds = bpState.mapsMeta.map(m => m.id);
@@ -101,20 +103,20 @@ function send(ws, obj) { ws.send(JSON.stringify(obj)); }
   const wsFor = { A: host, B: guest };
   let s = bpState;
 
-  // step 按顺序: ban(first), ban(second), pick(first), side(second), pick(second), side(first), ban(first), ban(second)
-  const stepActors = [];
+  // 官方 BO3 流程: A禁 B禁 A选 B边 B选 A边 A禁 B禁 → 决胜图 + A边
   const pattern = [
     ['ban', first], ['ban', second],
     ['pick', first], ['side', second],
     ['pick', second], ['side', first],
     ['ban', first], ['ban', second],
+    ['side', first, 'final'],
   ];
 
   let avail = [...mapIds];
   const picked = [];
 
   for (let i = 0; i < pattern.length; i++) {
-    const [act, team] = pattern[i];
+    const [act, team, kind] = pattern[i];
     const wsA = wsFor[team];
     if (act === 'ban') {
       const mapId = avail[0];
@@ -129,6 +131,13 @@ function send(ws, obj) { ws.send(JSON.stringify(obj)); }
       send(wsA, { type: 'map', mapId });
       s = await waitState(host, st => st.stepIndex === i + 1, `步骤${i + 1} ${team} pick ${mapId}`);
       assert(s.maps[mapId].status === 'picked' && s.maps[mapId].order === picked.length, `pick ${mapId} order=${s.maps[mapId].order}`);
+    } else if (kind === 'final') {
+      // 决胜图选边
+      const deciderId = avail[0];
+      send(wsA, { type: 'side', side: 'defense' });
+      s = await waitState(host, st => st.phase === 'done', '决胜图选边完成');
+      assert(s.maps[deciderId].side === 'defense' && s.maps[deciderId].sideBy === team, `决胜图 ${deciderId} 选边正确`);
+      assert(s.maps[deciderId].status === 'decider', '决胜图状态保留');
     } else {
       send(wsA, { type: 'side', side: 'attack' });
       s = await waitState(host, st => st.stepIndex === i + 1, `步骤${i + 1} ${team} side`);
@@ -150,13 +159,17 @@ function send(ws, obj) { ws.send(JSON.stringify(obj)); }
   // 非 turn 方 ban 应无效
   send(host, { type: 'startDice' });
   await waitState(host, st => st.phase === 'dice', '重新掷骰');
-  // 重新掷骰到分出
+  // 重新掷骰到分出，胜方选顺序进入 BP
   let bp2 = null;
   for (let r = 0; r < 20 && !bp2; r++) {
     send(host, { type: 'roll' });
     send(guest, { type: 'roll' });
-    bp2 = await waitState(host, st => st.phase === 'bp', '第二次掷骰', 2500).catch(() => null);
-    if (bp2) break;
+    const orderState = await waitState(host, st => st.phase === 'order', '第二次掷骰', 2500).catch(() => null);
+    if (orderState) {
+      send(orderState.diceWinner === 'A' ? host : guest, { type: 'order', role: 'B' });
+      bp2 = await waitState(host, st => st.phase === 'bp', '第二次选顺序进入 BP');
+      break;
+    }
     await new Promise(res => setTimeout(res, 250));
     send(host, { type: 'name', name: '电子队' });
   }

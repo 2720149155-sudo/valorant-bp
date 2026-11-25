@@ -25,7 +25,7 @@
       <p class="hero-sub">深技大瓦部赛事平台 · 淘汰赛地图禁选工具</p>
       <div class="hero-tags">
         <span class="tag">BO1 / BO3 / BO5</span>
-        <span class="tag">骰子定先手</span>
+        <span class="tag">掷骰获 BP 选择权</span>
         <span class="tag">双人实时同步</span>
       </div>
     </div>
@@ -132,6 +132,23 @@
       <div class="dice" id="dice-b" data-team="B"><div class="dice-face" id="dice-face-b"><span class="pip"></span></div></div>
       <div class="dice-hint" id="dice-hint-b">等待掷骰</div>
     </div>
+  </section>
+
+  <!-- 选择 BP 顺序 -->
+  <section id="phase-order" class="card order-card" hidden>
+    <h2 class="section-title"><span class="title-bar"></span>选择 BP 顺序</h2>
+    <p class="order-winner" id="order-winner-text">—</p>
+    <div class="side-btns" id="order-btns" hidden>
+      <button class="order-btn" data-role="A">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 11-14h-7l1-6z"/></svg>
+        <b>先禁先选</b><span>A 队 · 率先禁用与选图</span>
+      </button>
+      <button class="order-btn" data-role="B">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/></svg>
+        <b>后禁后选</b><span>B 队 · 后手禁选，掌握决胜图选边</span>
+      </button>
+    </div>
+    <p class="muted small center-hint" id="order-wait" hidden>对方正在选择 BP 顺序…</p>
   </section>
 
   <!-- BP -->

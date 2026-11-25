@@ -311,6 +311,23 @@ input { font-family: inherit; }
 .dice-round { font-size: 12px; font-weight: 700; color: var(--blue); letter-spacing: 2px; background: var(--blue-soft); padding: 4px 14px; border-radius: 999px; }
 .dice-vs { font-size: 26px; font-weight: 900; color: var(--text-4); }
 
+/* ============ 选择 BP 顺序 ============ */
+.order-card { padding: 30px; text-align: center; }
+.order-winner { font-size: 17px; font-weight: 800; color: var(--navy); margin-bottom: 18px; }
+.order-btn {
+  flex: 1; padding: 20px 14px; border-radius: 12px;
+  border: 2px solid var(--border-strong); background: #fff;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  color: var(--blue); transition: all .15s;
+}
+.order-btn svg { width: 30px; height: 30px; }
+.order-btn b { font-size: 18px; color: var(--navy); }
+.order-btn span { font-size: 11px; color: var(--text-3); }
+.order-btn:hover {
+  border-color: var(--blue); background: var(--blue-soft);
+  transform: translateY(-2px); box-shadow: 0 8px 20px rgba(37,99,235,.18);
+}
+
 /* ============ BP 布局 ============ */
 .bp-cols { display: grid; grid-template-columns: 200px 1fr 200px; gap: 14px; }
 .team-panel {

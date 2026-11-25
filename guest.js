@@ -42,6 +42,14 @@ function onState(s) {
       ws.send(JSON.stringify({ type: 'startDice' }));
     }, 700);
   }
+  if (s.phase === 'order' && myTeam === s.diceWinner && lastIdx !== -4) {
+    lastIdx = -4;
+    setTimeout(() => {
+      const role = Math.random() < 0.5 ? 'A' : 'B';
+      console.log(`[guest] 选择 BP 顺序: ${role === 'A' ? '先禁先选' : '后禁后选'}`);
+      ws.send(JSON.stringify({ type: 'order', role }));
+    }, 700);
+  }
   if (s.phase === 'bp' && s.stepIndex !== lastIdx) {
     lastIdx = s.stepIndex;
     const step = s.steps[s.stepIndex];

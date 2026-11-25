@@ -289,7 +289,7 @@ function renderOrder() {
   const win = st.diceWinner;
   const name = teamName(win);
   const isWinner = myTeam === win;
-  $('order-winner-text').innerHTML = `<span style="color:${win === 'A' ? 'var(--blue)' : 'var(--red)'}">${name}</span> 掷骰获胜，可决定先禁先选或后禁后选`;
+  $('order-winner-text').innerHTML = `<span style="color:${win === 'A' ? 'var(--blue)' : 'var(--red)'}">${name}</span> 掷骰获胜，可决定先 Ban 或后 Ban`;
   $('order-btns').hidden = !isWinner;
   $('order-wait').hidden = isWinner;
 }

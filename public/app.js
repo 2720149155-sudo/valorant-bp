@@ -538,15 +538,14 @@ function renderDone() {
 
     const name = document.createElement('div');
     name.className = 'rr-name';
-    name.innerHTML = `<b>${m.zh}</b><span>${m.en} · ${m.sites}</span>`;
+    name.innerHTML = `<b>${m.zh}</b><span>${m.en}</span>`;
     row.appendChild(name);
 
     const meta = document.createElement('div');
     meta.className = 'rr-meta';
     let by = '';
     if (mm.status === 'picked') by = `${teamName(mm.by)} 选图`;
-    else if (mm.status === 'match') by = '六禁一剩';
-    else by = '剩余决胜';
+    else if (mm.status === 'decider') by = '剩余决胜';
     let sidesHtml = '';
     if (mm.side) {
       const atk = mm.side === 'attack' ? mm.sideBy : otherTeam(mm.sideBy);
@@ -555,7 +554,9 @@ function renderDone() {
     } else if (mm.status === 'decider') {
       sidesHtml = `<span class="rr-chip rr-knife">开局阵营由比赛内刀局决定</span>`;
     }
-    meta.innerHTML = `<div class="rr-by">${by}</div><div class="rr-sides">${sidesHtml}</div>`;
+    meta.innerHTML = by
+      ? `<div class="rr-by">${by}</div><div class="rr-sides">${sidesHtml}</div>`
+      : `<div class="rr-sides">${sidesHtml}</div>`;
     row.appendChild(meta);
 
     list.appendChild(row);

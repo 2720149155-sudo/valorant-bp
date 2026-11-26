@@ -1,10 +1,17 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
+
+// 房间状态落盘位置（测试可用 BP_DATA_FILE 环境变量覆盖）。
+// 注意：Render 免费版的磁盘是临时盘（ephemeral disk），重新部署/服务迁移后
+// data/rooms.json 会丢失。落盘防的是进程崩溃、休眠唤醒丢房，不是 redeploy。
+const DATA_FILE = process.env.BP_DATA_FILE || path.join(__dirname, 'data', 'rooms.json');
+const UNDO_WINDOW_MS = 5000;
 
 const MAPS = [
   { id: 'bind', en: 'Bind', zh: '源工重镇', sites: 'A/B' },
@@ -25,7 +32,91 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 const ROOMS = new Map();
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
+// 与首页文案一致：房间有效期 24 小时
+const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+
+/* ---------- 房间持久化（JSON 落盘） ---------- */
+
+// 序列化：只存纯数据，socket / 观战者集合不落盘；重连时 connected 复位为 false
+function serializeRoom(r) {
+  return {
+    code: r.code,
+    createdAt: r.createdAt,
+    bo: r.bo,
+    phase: r.phase,
+    diceWinner: r.diceWinner,
+    diceRound: r.diceRound,
+    steps: r.steps,
+    stepIndex: r.stepIndex,
+    maps: r.maps,
+    pickCount: r.pickCount,
+    players: {
+      A: { name: r.players.A.name, dice: r.players.A.dice, rolled: r.players.A.rolled, token: r.players.A.token },
+      B: { name: r.players.B.name, dice: r.players.B.dice, rolled: r.players.B.rolled, token: r.players.B.token },
+    },
+  };
+}
+
+function saveRooms() {
+  try {
+    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+    const data = [...ROOMS.values()].map(serializeRoom);
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error('[persist] 保存房间失败:', e.message);
+  }
+}
+
+function loadRooms() {
+  let raw;
+  try {
+    raw = fs.readFileSync(DATA_FILE, 'utf8');
+  } catch {
+    return; // 首次启动尚无落盘文件，正常
+  }
+  let list;
+  try {
+    list = JSON.parse(raw);
+  } catch (e) {
+    console.error('[persist] rooms.json 损坏，跳过恢复:', e.message);
+    return;
+  }
+  if (!Array.isArray(list)) return;
+  const now = Date.now();
+  let restored = 0;
+  for (const d of list) {
+    if (!d || !d.code || typeof d.createdAt !== 'number') continue;
+    if (now - d.createdAt > ROOM_TTL_MS) continue; // 已过期的房间不恢复
+    const r = newRoom(d.code);
+    r.createdAt = d.createdAt;
+    r.bo = d.bo || null;
+    r.phase = d.phase || 'waiting';
+    r.diceWinner = d.diceWinner || null;
+    r.diceRound = d.diceRound || 1;
+    r.steps = Array.isArray(d.steps) ? d.steps : [];
+    r.stepIndex = d.stepIndex || 0;
+    r.maps = d.maps || r.maps;
+    r.pickCount = d.pickCount || 0;
+    for (const t of ['A', 'B']) {
+      const pd = d.players && d.players[t];
+      if (pd) {
+        r.players[t].name = pd.name || '';
+        r.players[t].dice = pd.dice ?? null;
+        r.players[t].rolled = !!pd.rolled;
+        r.players[t].token = pd.token || null;
+      }
+      r.players[t].connected = false;
+      r.players[t].socket = null;
+    }
+    ROOMS.set(r.code, r);
+    restored++;
+  }
+  if (restored) console.log(`[persist] 已恢复 ${restored} 个房间（来自 ${DATA_FILE}）`);
+}
+
+function isExpired(room) {
+  return Date.now() - room.createdAt > ROOM_TTL_MS;
+}
 
 function genCode() {
   let code;
@@ -81,11 +172,13 @@ function newRoom(code) {
     stepIndex: 0,
     maps,
     pickCount: 0,
+    spectators: new Set(), // 观战者 socket 集合（不落盘）
+    lastAction: null, // 最近一步快照，用于 5 秒内撤销 {type, team, at, prev, afterStepIndex, afterPhase}
   };
 }
 
 function publicState(room) {
-  return {
+  const state = {
     code: room.code,
     phase: room.phase,
     bo: room.bo,
@@ -99,7 +192,14 @@ function publicState(room) {
     stepIndex: room.stepIndex,
     maps: room.maps,
     mapsMeta: MAPS,
+    expiresAt: room.createdAt + ROOM_TTL_MS,
+    spectators: room.spectators.size,
   };
+  // 撤销窗口信息（仅当最近一步仍在 5 秒窗口内时下发）
+  if (room.lastAction && Date.now() - room.lastAction.at < UNDO_WINDOW_MS) {
+    state.undo = { by: room.lastAction.team, until: room.lastAction.at + UNDO_WINDOW_MS };
+  }
+  return state;
 }
 
 function broadcast(room) {
@@ -108,6 +208,10 @@ function broadcast(room) {
     const p = room.players[t];
     if (p.socket && p.socket.readyState === 1) p.socket.send(msg);
   }
+  for (const s of room.spectators) {
+    if (s.readyState === 1) s.send(msg);
+  }
+  saveRooms(); // 每次状态变化即落盘
 }
 
 function sideTarget(room) {
@@ -132,6 +236,23 @@ function handleMsg(ws, raw) {
   const room = ws.__room;
   const team = ws.__team;
 
+  // 撤销支持：记录一步操作前的完整快照（地图状态/stepIndex/pickCount/phase）
+  function snapshotLastAction(type) {
+    room.lastAction = {
+      type,
+      team,
+      at: Date.now(),
+      prev: {
+        maps: JSON.parse(JSON.stringify(room.maps)),
+        stepIndex: room.stepIndex,
+        pickCount: room.pickCount,
+        phase: room.phase,
+      },
+      afterStepIndex: null,
+      afterPhase: null,
+    };
+  }
+
   if (msg.type === 'create') {
     if (room) return;
     const code = genCode();
@@ -150,7 +271,12 @@ function handleMsg(ws, raw) {
   if (msg.type === 'join') {
     if (room) return;
     const r = ROOMS.get(String(msg.code || '').toUpperCase());
-    if (!r) return ws.send(JSON.stringify({ type: 'error', message: '房间不存在，请检查房间码' }));
+    if (!r) return ws.send(JSON.stringify({ type: 'error', code: 'room_not_found', message: '房间不存在，请检查房间码' }));
+    if (isExpired(r) && !r.players.A.connected && !r.players.B.connected) {
+      ROOMS.delete(r.code);
+      saveRooms();
+      return ws.send(JSON.stringify({ type: 'error', code: 'room_expired', message: '房间已过期（有效期 24 小时），请重新创建房间' }));
+    }
     const token = msg.token;
     for (const t of ['A', 'B']) {
       if (r.players[t].token && r.players[t].token === token) {
@@ -175,11 +301,29 @@ function handleMsg(ws, raw) {
       broadcast(r);
       return;
     }
-    ws.send(JSON.stringify({ type: 'error', message: '房间已满' }));
+    ws.send(JSON.stringify({ type: 'error', code: 'room_full', message: '房间已满，A、B 两队均已就位' }));
+    return;
+  }
+
+  // 观战加入：不占 A/B 席位，只收 state 广播，不能发任何游戏操作
+  if (msg.type === 'spectate') {
+    if (room) return;
+    const r = ROOMS.get(String(msg.code || '').toUpperCase());
+    if (!r) return ws.send(JSON.stringify({ type: 'error', code: 'room_not_found', message: '房间不存在，请检查房间码' }));
+    if (isExpired(r) && !r.players.A.connected && !r.players.B.connected) {
+      ROOMS.delete(r.code);
+      saveRooms();
+      return ws.send(JSON.stringify({ type: 'error', code: 'room_expired', message: '房间已过期（有效期 24 小时），请重新创建房间' }));
+    }
+    r.spectators.add(ws);
+    ws.__room = r; ws.__team = 'S'; ws.__spectator = true;
+    ws.send(JSON.stringify({ type: 'joined', code: r.code, team: 'S', token: null }));
+    broadcast(r);
     return;
   }
 
   if (!room || !team) return;
+  if (ws.__spectator) return; // 观战者禁止一切游戏操作
   const p = room.players[team];
 
   switch (msg.type) {
@@ -200,6 +344,7 @@ function handleMsg(ws, raw) {
     case 'startDice': {
       if (room.phase !== 'setup' || !room.bo) return;
       room.phase = 'dice';
+      room.lastAction = null;
       room.diceWinner = null;
       room.diceRound = 1;
       room.players.A.dice = null; room.players.A.rolled = false;
@@ -233,6 +378,7 @@ function handleMsg(ws, raw) {
       room.steps = buildSteps(room.bo, first);
       room.stepIndex = 0;
       room.phase = 'bp';
+      room.lastAction = null;
       broadcast(room);
       break;
     }
@@ -245,6 +391,7 @@ function handleMsg(ws, raw) {
       const mapId = String(msg.mapId || '');
       const m = room.maps[mapId];
       if (!m || m.status !== 'available') return;
+      snapshotLastAction('map');
       if (step.type === 'ban') {
         m.status = 'banned';
         m.by = team;
@@ -256,6 +403,8 @@ function handleMsg(ws, raw) {
       }
       room.stepIndex += 1;
       if (room.stepIndex >= room.steps.length) finalize(room);
+      room.lastAction.afterStepIndex = room.stepIndex;
+      room.lastAction.afterPhase = room.phase;
       broadcast(room);
       break;
     }
@@ -267,11 +416,29 @@ function handleMsg(ws, raw) {
       const side = msg.side === 'attack' ? 'attack' : 'defense';
       const target = sideTarget(room);
       if (!target) return;
+      snapshotLastAction('side');
       const m = room.maps[target];
       m.side = side;
       m.sideBy = team;
       room.stepIndex += 1;
       if (room.stepIndex >= room.steps.length) finalize(room);
+      room.lastAction.afterStepIndex = room.stepIndex;
+      room.lastAction.afterPhase = room.phase;
+      broadcast(room);
+      break;
+    }
+
+    case 'undo': {
+      // 5 秒内撤销最近一步：仅操作方本人、且此后无人操作过（stepIndex/phase 未变）
+      const la = room.lastAction;
+      if (!la || la.team !== team) return;
+      if (Date.now() - la.at > UNDO_WINDOW_MS) return;
+      if (room.stepIndex !== la.afterStepIndex || room.phase !== la.afterPhase) return;
+      room.maps = JSON.parse(JSON.stringify(la.prev.maps));
+      room.stepIndex = la.prev.stepIndex;
+      room.pickCount = la.prev.pickCount;
+      room.phase = la.prev.phase;
+      room.lastAction = null; // 一次撤销机会，用完即止
       broadcast(room);
       break;
     }
@@ -279,6 +446,7 @@ function handleMsg(ws, raw) {
     case 'reset': {
       if (room.phase === 'waiting') return;
       room.phase = 'setup';
+      room.lastAction = null;
       room.diceWinner = null;
       room.diceRound = 1;
       room.steps = [];
@@ -297,6 +465,11 @@ wss.on('connection', (ws) => {
   ws.on('message', (data) => handleMsg(ws, data.toString()));
   ws.on('close', () => {
     if (ws.__room && ws.__team) {
+      if (ws.__spectator) {
+        ws.__room.spectators.delete(ws);
+        broadcast(ws.__room);
+        return;
+      }
       const p = ws.__room.players[ws.__team];
       if (p.socket === ws) { p.socket = null; p.connected = false; broadcast(ws.__room); }
     }
@@ -305,12 +478,17 @@ wss.on('connection', (ws) => {
 
 setInterval(() => {
   const now = Date.now();
+  let changed = false;
   for (const [code, r] of ROOMS) {
     if (now - r.createdAt > ROOM_TTL_MS && !r.players.A.connected && !r.players.B.connected) {
       ROOMS.delete(code);
+      changed = true;
     }
   }
+  if (changed) saveRooms();
 }, 10 * 60 * 1000);
+
+loadRooms(); // 启动时从 data/rooms.json 恢复房间
 
 server.listen(PORT, () => {
   console.log(`Valorant BP server running at http://localhost:${PORT}`);

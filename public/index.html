@@ -48,6 +48,49 @@
       <button id="btn-join" class="btn btn-outline">加入房间</button>
     </div>
     <div id="home-error" class="form-error"></div>
+    <ul class="home-notes">
+      <li>房间码不区分大小写</li>
+      <li>房间有效期 24 小时</li>
+      <li>数据实时同步，刷新不掉线</li>
+    </ul>
+  </section>
+
+  <section class="card pool-card">
+    <h2 class="section-title"><span class="title-bar"></span>地图池 <span class="pool-count">7 张</span></h2>
+    <div class="pool-grid" id="home-pool"></div>
+  </section>
+
+  <section class="card recent-card" id="recent-card" hidden>
+    <h2 class="section-title"><span class="title-bar"></span>最近房间
+      <button id="btn-clear-recent" class="btn btn-ghost btn-small">清空</button>
+    </h2>
+    <div id="recent-list" class="recent-list"></div>
+  </section>
+</main>
+
+<!-- ============ 加载骨架（带 ?room= 打开时，收到首个 state 前显示） ============ -->
+<main id="screen-loading" class="container" hidden>
+  <section class="card skeleton-roombar"><div class="sk-bar sk-code"></div><div class="sk-bar sk-btn"></div></section>
+  <section class="card skeleton-body">
+    <div class="sk-bar sk-title"></div>
+    <div class="sk-bar sk-line"></div>
+    <div class="sk-bar sk-line short"></div>
+    <div class="sk-grid"><div class="sk-cell"></div><div class="sk-cell"></div><div class="sk-cell"></div><div class="sk-cell"></div></div>
+    <p class="muted small center-hint sk-hint">正在连接房间…</p>
+  </section>
+</main>
+
+<!-- ============ 全屏错误提示（房间不存在 / 已满 / 已过期） ============ -->
+<main id="screen-error" class="container" hidden>
+  <section class="card error-card">
+    <div class="error-icon" id="error-icon">!</div>
+    <h2 id="error-title">房间不存在</h2>
+    <p class="muted" id="error-msg">请检查房间码是否正确。</p>
+    <div class="error-actions">
+      <button id="btn-error-home" class="btn btn-outline">返回首页</button>
+      <button id="btn-error-create" class="btn btn-primary">重新建房</button>
+      <button id="btn-error-spectate" class="btn btn-primary" hidden>进入观战</button>
+    </div>
   </section>
 </main>
 
@@ -59,6 +102,8 @@
       <b class="roombar-code" id="room-code">—</b>
     </div>
     <button id="btn-copy" class="btn btn-outline btn-copy">复制邀请链接</button>
+    <span id="room-expire" class="room-expire" title="房间有效期 24 小时">有效期剩余 —</span>
+    <span id="spectate-badge" class="spectate-badge" hidden>👁 观战中</span>
     <span id="conn-status" class="conn-status"><i class="dot dot-on"></i>已连接</span>
   </section>
 
@@ -113,10 +158,15 @@
     </div>
     <button id="btn-start-dice" class="btn btn-primary btn-big" hidden>确认队名，开始 BP</button>
     <p class="muted small center-hint" id="setup-hint"></p>
+    <div class="setup-pool">
+      <div class="field-label">地图池（本局可选的 7 张地图）</div>
+      <div class="pool-grid pool-small" id="setup-pool"></div>
+    </div>
     <details class="rules-box" id="rules-box">
       <summary>查看 BP 规则</summary>
       <div class="rules-body">
-        <p class="rules-lead">双方队长投掷骰子，点数大者的队伍决定地图选择顺序（TEAM A 或 TEAM B）。</p>
+        <p class="rules-lead">掷骰决定谁先选：点数大者选择先 Ban（A 队）或后 Ban（B 队）。选定身份后，Ban / Pick 顺序按固定流程走，不再改变。</p>
+        <p class="rules-note">选 A：先 Ban、选图一、决胜图选边；选 B：后 Ban、图一选边、选图二。选图者不选边。正式比赛以瓦部秩序册为准。</p>
         <h4>BO1 地图选择流程</h4>
         <ol>
           <li>A、B 队轮流各 Ban 三张地图（A先B后）</li>
@@ -227,11 +277,31 @@
     <h2 class="section-title"><span class="title-bar"></span>BP 结果</h2>
     <div class="result-list" id="result-list"></div>
     <div class="result-actions">
+      <button id="btn-copy-result" class="btn btn-primary">复制赛果</button>
       <button id="btn-again" class="btn btn-outline">重新 BP</button>
       <button id="btn-home" class="btn btn-outline">返回首页</button>
     </div>
   </section>
 </main>
+
+<!-- Ban/Pick 二次确认弹窗 -->
+<div id="confirm-modal" class="overlay" hidden>
+  <div class="overlay-box card confirm-box">
+    <div class="ov-eyebrow" id="confirm-eyebrow">CONFIRM</div>
+    <div class="confirm-map" id="confirm-map">—</div>
+    <div class="confirm-text" id="confirm-text">—</div>
+    <div class="confirm-actions">
+      <button id="btn-confirm-cancel" class="btn btn-outline">取消</button>
+      <button id="btn-confirm-ok" class="btn btn-primary">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 撤销提示条 -->
+<div id="undo-bar" class="undo-bar" hidden>
+  <span id="undo-text">已操作，可撤销</span>
+  <button id="btn-undo" class="btn btn-undo">撤销</button>
+</div>
 
 <!-- 掷骰结果浮层 -->
 <div id="dice-overlay" class="overlay" hidden>

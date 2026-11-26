@@ -1,33 +1,55 @@
 /* 自动对手模拟器：加入指定房间并自动完成所有回合 */
 /* 用法: node guest.js <房间码> [队名] [赛制] [服务器WS地址]（赛制由房主设置，第4参数仅占位） */
+/* 观战模式: node guest.js <房间码> --spectate [服务器WS地址] */
 const WebSocket = require('ws');
 
 const code = process.argv[2];
-const name = process.argv[3] || '机械队';
-const base = process.argv[5] || 'ws://localhost:3000';
+const spectateMode = process.argv.includes('--spectate');
+const name = spectateMode ? '观战者' : (process.argv[3] || '机械队');
+// 观战模式地址可放在第 3 或第 4 个参数；玩家模式地址在第 5 个参数
+const base = spectateMode
+  ? ([process.argv[3], process.argv[4]].find(a => a && a.startsWith('ws')) || 'ws://localhost:3000')
+  : (process.argv[5] || 'ws://localhost:3000');
 const ws = new WebSocket(base.replace(/\/$/, '') + '/ws');
 let myTeam = null;
 
 if (!code) { console.error('用法: node guest.js <房间码> [队名] [赛制] [服务器WS地址]'); process.exit(1); }
 
 ws.on('open', () => {
-  ws.send(JSON.stringify({ type: 'join', code: code.toUpperCase() }));
+  if (spectateMode) {
+    ws.send(JSON.stringify({ type: 'spectate', code: code.toUpperCase() }));
+  } else {
+    ws.send(JSON.stringify({ type: 'join', code: code.toUpperCase() }));
+  }
 });
 
 ws.on('message', (raw) => {
   const msg = JSON.parse(raw.toString());
   if (msg.type === 'joined') {
     myTeam = msg.team;
-    console.log(`[guest] 已加入房间 ${msg.code}，身份 ${msg.team}`);
-    ws.send(JSON.stringify({ type: 'name', name }));
+    console.log(`[guest] 已加入房间 ${msg.code}，身份 ${msg.team}${msg.team === 'S' ? '（观战）' : ''}`);
+    if (msg.team !== 'S') ws.send(JSON.stringify({ type: 'name', name }));
+  }
+  if (msg.type === 'error') {
+    console.log(`[guest] 收到错误: code=${msg.code || '-'} message=${msg.message}`);
   }
   if (msg.type === 'state') onState(msg.state);
 });
 
-ws.on('close', () => { console.log('[guest] 断开'); process.exit(0); });
+ws.on('close', (code, reason) => { console.log(`[guest] 断开 code=${code} reason=${reason || '-'}`); process.exit(0); });
+ws.on('error', (e) => { console.log('[guest] ws 错误:', e.message); });
 
 let lastIdx = -1;
+let lastPhaseSeen = null;
 function onState(s) {
+  if (spectateMode) {
+    // 观战模式：只看不操作，记录阶段变化
+    if (s.phase !== lastPhaseSeen) {
+      lastPhaseSeen = s.phase;
+      console.log(`[guest-spectate] 阶段: ${s.phase} step=${s.stepIndex} 观战人数=${s.spectators}`);
+    }
+    return;
+  }
   const me = s.players[myTeam];
   if (s.phase === 'dice' && !me.rolled) {
     setTimeout(() => {

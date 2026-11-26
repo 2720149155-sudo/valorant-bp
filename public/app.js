@@ -22,8 +22,66 @@ const $ = (id) => document.getElementById(id);
 const TEAM_NAME = { A: 'A队', B: 'B队' };
 const SIDE_LABEL = { attack: '进攻', defense: '防守' };
 const BO_TEXT = { bo1: 'BO1 · 单图决胜', bo3: 'BO3 · 三图两胜', bo5: 'BO5 · 五图三胜' };
+// 地图池元数据（与服务端 MAPS 一致，用于首页/赛前地图池预览）
+const MAPS_META = [
+  { id: 'bind', en: 'Bind', zh: '源工重镇', sites: 'A/B' },
+  { id: 'haven', en: 'Haven', zh: '隐世修所', sites: 'A/B/C' },
+  { id: 'lotus', en: 'Lotus', zh: '莲华古城', sites: 'A/B/C' },
+  { id: 'sunset', en: 'Sunset', zh: '日落之城', sites: 'A/B' },
+  { id: 'abyss', en: 'Abyss', zh: '幽邃地窟', sites: 'A/B' },
+  { id: 'corrode', en: 'Corrode', zh: '盐海矿镇', sites: 'A/B' },
+  { id: 'summit', en: 'Summit', zh: '天枢云阙', sites: 'A/B' },
+];
 
 function otherTeam(t) { return t === 'A' ? 'B' : 'A'; }
+
+/* ---------- 纯函数（可被 node 测试抽取验证） ---------- */
+
+// 房间剩余有效期文案
+function formatRemaining(ms) {
+  if (ms <= 0) return '已过期';
+  const totalMin = Math.floor(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return `有效期剩余 ${h} 小时 ${m} 分`;
+  return `有效期剩余 ${m} 分`;
+}
+
+// 生成可直接发群的赛果文字
+function buildResultText(state) {
+  const boLabel = { bo1: 'BO1', bo3: 'BO3', bo5: 'BO5' }[state.bo] || state.bo || '';
+  const nameOf = (t) => (state.players[t] && state.players[t].name) || (t === 'A' ? 'A队' : 'B队');
+  const atkTeamOf = (mm) => {
+    if (!mm.side) return null;
+    return mm.side === 'attack' ? mm.sideBy : (mm.sideBy === 'A' ? 'B' : 'A');
+  };
+  const picked = state.mapsMeta.filter(m => state.maps[m.id].status === 'picked')
+    .sort((a, b) => state.maps[a.id].order - state.maps[b.id].order);
+  const decider = state.mapsMeta.filter(m => state.maps[m.id].status === 'decider');
+  const matchMap = state.mapsMeta.filter(m => state.maps[m.id].status === 'match');
+  const rows = [...picked, ...decider, ...matchMap];
+  const numZh = ['一', '二', '三', '四', '五'];
+  const lines = [`【瓦部赛事台】${boLabel} 赛果`];
+  rows.forEach((m, i) => {
+    const mm = state.maps[m.id];
+    let label;
+    if (mm.status === 'match') label = '比赛地图';
+    else if (mm.status === 'decider') label = '决胜图';
+    else label = `图${numZh[i] || (i + 1)}`;
+    let desc;
+    if (mm.status === 'picked') {
+      const atk = atkTeamOf(mm);
+      desc = atk ? `${nameOf(mm.by)}选图，${nameOf(atk)}进攻开局` : `${nameOf(mm.by)}选图，阵营待定`;
+    } else {
+      const atk = atkTeamOf(mm);
+      desc = mm.side
+        ? `${nameOf(mm.sideBy)}选边，${nameOf(atk)}进攻开局`
+        : '开局阵营由比赛内刀局决定';
+    }
+    lines.push(`${label} ${m.zh}：${desc}`);
+  });
+  return lines.join('\n');
+}
 
 /* ---------- 连接 ---------- */
 
@@ -60,6 +118,8 @@ function connect() {
 }
 
 function send(obj) {
+  // 观战者禁止一切游戏操作（服务端同样会拦截，这里是前端双保险）
+  if (myTeam === 'S' && obj.type !== 'spectate' && obj.type !== 'join') return;
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
 }
 
@@ -67,17 +127,28 @@ function handleMsg(msg) {
   if (msg.type === 'joined') {
     roomCode = msg.code;
     myTeam = msg.team;
-    sessionStorage.setItem(`bp-token-${msg.code}`, msg.token);
+    if (msg.token) sessionStorage.setItem(`bp-token-${msg.code}`, msg.token);
     const url = new URL(location.href);
     url.searchParams.set('room', msg.code);
     history.replaceState(null, '', url);
     $('screen-home').hidden = true;
+    $('screen-loading').hidden = true;
+    $('screen-error').hidden = true;
     $('screen-room').hidden = false;
     $('room-code').textContent = msg.code;
     $('waiting-code').textContent = msg.code;
+    const spectating = msg.team === 'S';
+    document.body.classList.toggle('spectating', spectating);
+    $('spectate-badge').hidden = !spectating;
+    if (!spectating) recordRecent(msg.code, msg.team);
+    else recordRecent(msg.code, 'S');
     return;
   }
   if (msg.type === 'error') {
+    if (msg.code === 'room_not_found' || msg.code === 'room_full' || msg.code === 'room_expired') {
+      showRoomError(msg.code, msg.message);
+      return;
+    }
     if (!roomCode) {
       $('home-error').textContent = msg.message;
     } else {
@@ -91,6 +162,20 @@ function handleMsg(msg) {
   if (msg.type === 'state') {
     render(msg.state);
   }
+}
+
+// 全屏错误提示：房间不存在 / 已满 / 已过期，绝不留白
+function showRoomError(code, message) {
+  const titles = { room_not_found: '房间不存在', room_full: '房间已满', room_expired: '房间已过期' };
+  $('screen-home').hidden = true;
+  $('screen-room').hidden = true;
+  $('screen-loading').hidden = true;
+  $('screen-error').hidden = false;
+  $('error-title').textContent = titles[code] || '无法进入房间';
+  $('error-msg').textContent = code === 'room_full'
+    ? `${message}，可以进入观战，或返回首页重新建房。`
+    : message;
+  $('btn-error-spectate').hidden = code !== 'room_full';
 }
 
 function setConn(on) {
@@ -129,6 +214,10 @@ function render(state) {
   if (st.phase === 'order') renderOrder();
   if (st.phase === 'bp') renderBp();
   if (st.phase === 'done') renderDone();
+  renderSpectator();
+  renderExpiry();
+  updateUndoBar();
+  updateRecentBo(st.code, st.bo);
 
   prevPhase = st.phase;
   prevDiceRound = st.diceRound;
@@ -138,7 +227,33 @@ function render(state) {
 
 function teamName(t) { return st ? st.players[t].name : TEAM_NAME[t]; }
 
+// 观战者：禁用所有输入与操作按钮（服务端同样拦截）
+function renderSpectator() {
+  if (myTeam !== 'S') return;
+  document.querySelectorAll('.input-name, .bo-btn').forEach(el => { el.disabled = true; });
+  $('btn-start-dice').hidden = true;
+  $('btn-roll').hidden = true;
+}
+
+// 房间有效期倒计时
+function renderExpiry() {
+  const el = $('room-expire');
+  if (!st || !st.expiresAt) { el.textContent = '有效期剩余 —'; return; }
+  el.textContent = formatRemaining(st.expiresAt - Date.now());
+}
+
+// 撤销提示条：仅操作方本人在 5 秒窗口内可见
+function updateUndoBar() {
+  const bar = $('undo-bar');
+  if (!st || st.phase !== 'bp' || !st.undo || st.undo.by !== myTeam) { bar.hidden = true; return; }
+  const left = Math.ceil((st.undo.until - Date.now()) / 1000);
+  if (left <= 0) { bar.hidden = true; return; }
+  bar.hidden = false;
+  $('undo-text').textContent = `已操作，可在 ${left} 秒内撤销`;
+}
+
 function renderDisconnect() {
+  if (myTeam === 'S') return; // 观战者没有“对方”，不显示断线提示
   const other = myTeam === 'A' ? 'B' : 'A';
   const disc = st && st.players[other] && !st.players[other].connected && st.phase !== 'waiting';
   if (!toastTimer) $('disc-toast').hidden = !disc;
@@ -147,6 +262,7 @@ function renderDisconnect() {
 /* ---------- 房主设置（等待对手） ---------- */
 
 function fillNameInput(sectionSel) {
+  if (myTeam === 'S') return; // 观战者没有队名输入
   const input = document.querySelector(sectionSel + ' .input-name');
   if (!input || document.activeElement === input) return;
   const myName = st.players[myTeam].name;
@@ -235,7 +351,7 @@ function renderDice() {
     }
   }
 
-  const me = st.players[myTeam];
+  const me = st.players[myTeam] || { rolled: true };
   $('btn-roll').hidden = me.rolled;
   $('btn-roll').disabled = me.rolled;
 }
@@ -397,7 +513,7 @@ function renderMapGrid(step) {
       if (canAct) {
         card.classList.add('clickable');
         if (step.team === 'B') card.classList.add('b-turn');
-        card.onclick = () => send({ type: 'map', mapId: m.id });
+        card.onclick = () => openConfirm(m.id, step.type);
       } else {
         card.classList.add('dimmed');
       }
@@ -406,9 +522,9 @@ function renderMapGrid(step) {
       addStamp(card, 'stamp-ban', 'BAN');
       addBottomChip(card, `${teamName(mm.by)} 禁用`);
     } else if (mm.status === 'picked') {
-      card.classList.add('picked');
-      addStamp(card, 'stamp-pick', 'PICK');
-      addOrderBadge(card, mm.order, false);
+      card.classList.add('picked', mm.by === 'A' ? 'picked-a' : 'picked-b');
+      addStamp(card, mm.by === 'A' ? 'stamp-pick-a' : 'stamp-pick-b', 'PICK');
+      addOrderBadge(card, mm.order, false, mm.by === 'A' ? 'ord-a' : 'ord-b');
       if (mm.side) addBottomChip(card, null, mm.side, mm.sideBy);
     } else if (mm.status === 'decider') {
       card.classList.add('decider');
@@ -431,9 +547,9 @@ function addStamp(card, cls, text) {
   card.appendChild(s);
 }
 
-function addOrderBadge(card, n, gold) {
+function addOrderBadge(card, n, gold, extraCls) {
   const b = document.createElement('div');
-  b.className = 'map-order' + (gold ? ' gold' : '');
+  b.className = 'map-order' + (gold ? ' gold' : '') + (extraCls ? ' ' + extraCls : '');
   b.textContent = n;
   card.appendChild(b);
 }
@@ -563,6 +679,97 @@ function renderDone() {
   });
 }
 
+/* ---------- Ban/Pick 二次确认 ---------- */
+
+let pendingConfirm = null;
+
+function openConfirm(mapId, actionType) {
+  const m = st.mapsMeta.find(x => x.id === mapId);
+  if (!m) return;
+  pendingConfirm = { mapId, actionType };
+  $('confirm-eyebrow').textContent = actionType === 'ban' ? 'BAN · 禁用' : 'PICK · 选择';
+  $('confirm-map').textContent = `${m.zh} · ${m.en}`;
+  $('confirm-text').textContent = actionType === 'ban'
+    ? `确定禁用「${m.zh}」吗？确认后 5 秒内可撤销。`
+    : `确定选择「${m.zh}」作为对局地图吗？确认后 5 秒内可撤销。`;
+  $('confirm-modal').hidden = false;
+}
+
+/* ---------- 地图池预览 ---------- */
+
+function renderMapPool(el) {
+  if (!el) return;
+  el.innerHTML = '';
+  for (const m of MAPS_META) {
+    const card = document.createElement('div');
+    card.className = 'pool-item';
+    card.innerHTML = `<div class="pool-thumb" style="background-image:url(maps/${m.id}-card.webp)"></div>` +
+      `<div class="pool-name"><b>${m.zh}</b><span>${m.en} · 点位 ${m.sites}</span></div>`;
+    el.appendChild(card);
+  }
+}
+
+/* ---------- 最近房间（localStorage，最多 8 条） ---------- */
+
+const RECENT_KEY = 'bp-recent-rooms';
+
+function loadRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveRecentList(list) {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) {}
+}
+
+function recordRecent(code, role) {
+  const list = loadRecent().filter(r => r.code !== code);
+  list.unshift({ code, role, bo: null, visitedAt: Date.now() });
+  saveRecentList(list.slice(0, 8));
+  renderRecent();
+}
+
+function updateRecentBo(code, bo) {
+  if (!bo) return;
+  const list = loadRecent();
+  const r = list.find(x => x.code === code);
+  if (r && r.bo !== bo) {
+    r.bo = bo;
+    saveRecentList(list);
+    renderRecent();
+  }
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '刚刚';
+  if (min < 60) return `${min} 分钟前`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} 小时前`;
+  const d = Math.floor(h / 24);
+  return `${d} 天前`;
+}
+
+function renderRecent() {
+  const list = loadRecent();
+  $('recent-card').hidden = list.length === 0;
+  const el = $('recent-list');
+  el.innerHTML = '';
+  list.forEach(r => {
+    const item = document.createElement('button');
+    item.className = 'recent-item';
+    const roleTxt = r.role === 'S' ? '观战' : r.role === 'A' ? '房主' : '对手';
+    item.innerHTML = `<b>${r.code}</b><span>${r.bo ? BO_TEXT[r.bo] : '未选赛制'}</span>` +
+      `<span>${roleTxt}</span><em>${timeAgo(r.visitedAt)}</em>`;
+    item.onclick = () => {
+      $('input-code').value = r.code;
+      $('btn-join').click();
+    };
+    el.appendChild(item);
+  });
+}
+
 /* ---------- 工具 ---------- */
 
 function toast(text) {
@@ -648,10 +855,9 @@ document.querySelectorAll('.order-btn').forEach(b => {
 });
 
 function tryRoll() {
-  if (st && st.phase === 'dice' && !st.players[myTeam].rolled) {
-    startDiceAnim(myTeam);
-    send({ type: 'roll' });
-  }
+  if (!st || st.phase !== 'dice' || !st.players[myTeam] || st.players[myTeam].rolled) return;
+  startDiceAnim(myTeam);
+  send({ type: 'roll' });
 }
 $('btn-roll').onclick = tryRoll;
 $('dice-a').onclick = () => { if (myTeam === 'A') tryRoll(); };
@@ -660,6 +866,47 @@ $('dice-b').onclick = () => { if (myTeam === 'B') tryRoll(); };
 document.querySelectorAll('.side-btn').forEach(b => {
   b.onclick = () => send({ type: 'side', side: b.dataset.side });
 });
+
+$('btn-confirm-ok').onclick = () => {
+  if (pendingConfirm) {
+    send({ type: 'map', mapId: pendingConfirm.mapId });
+    pendingConfirm = null;
+  }
+  $('confirm-modal').hidden = true;
+};
+$('btn-confirm-cancel').onclick = () => {
+  pendingConfirm = null;
+  $('confirm-modal').hidden = true;
+};
+
+$('btn-undo').onclick = () => send({ type: 'undo' });
+
+$('btn-copy-result').onclick = () => {
+  if (!st) return;
+  const text = buildResultText(st);
+  const done = () => toast('赛果已复制，发到群里吧');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+};
+
+$('btn-clear-recent').onclick = () => {
+  saveRecentList([]);
+  renderRecent();
+};
+
+$('btn-error-home').onclick = () => { location.href = '/'; };
+$('btn-error-create').onclick = () => {
+  try { sessionStorage.setItem('bp-autocreate', '1'); } catch (e) {}
+  location.href = '/';
+};
+$('btn-error-spectate').onclick = () => {
+  $('screen-error').hidden = true;
+  $('screen-loading').hidden = false;
+  send({ type: 'spectate', code: roomCode });
+};
 
 $('btn-again').onclick = () => {
   if (confirm('确定重新开始 BP？当前结果将清空。')) {
@@ -680,11 +927,27 @@ for (const t of ['a', 'b']) {
   face.innerHTML = Array.from({ length: 9 }, () => '<span class="pip"></span>').join('');
 }
 
+// 地图池预览（首页 + 赛前确认页）
+renderMapPool($('home-pool'));
+renderMapPool($('setup-pool'));
+// 最近房间
+renderRecent();
+// 倒计时与撤销条每秒刷新
+setInterval(() => { renderExpiry(); updateUndoBar(); }, 1000);
+// 从错误页“重新建房”回来时自动创建房间
+try {
+  if (sessionStorage.getItem('bp-autocreate')) {
+    sessionStorage.removeItem('bp-autocreate');
+    setTimeout(() => $('btn-create').click(), 100);
+  }
+} catch (e) {}
+
 const urlRoom = new URLSearchParams(location.search).get('room');
 if (urlRoom) {
   roomCode = urlRoom.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
   $('screen-home').hidden = true;
-  $('screen-room').hidden = false;
+  $('screen-room').hidden = true;
+  $('screen-loading').hidden = false; // 首个 state 到达前显示骨架屏
   $('room-code').textContent = roomCode;
   $('waiting-code').textContent = roomCode;
   setConn(false);

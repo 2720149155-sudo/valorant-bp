@@ -927,8 +927,9 @@ for (const t of ['a', 'b']) {
   face.innerHTML = Array.from({ length: 9 }, () => '<span class="pip"></span>').join('');
 }
 
-// 地图池预览（首页 + 赛前确认页）
+// 地图池预览（首页 + 房主等待页 + 赛前确认页）
 renderMapPool($('home-pool'));
+renderMapPool($('waiting-pool'));
 renderMapPool($('setup-pool'));
 // 最近房间
 renderRecent();

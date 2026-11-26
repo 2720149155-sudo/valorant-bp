@@ -3,6 +3,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
@@ -24,7 +25,56 @@ const MAPS = [
 ];
 
 const app = express();
-app.use(express.static(path.join(__dirname, 'public')));
+
+// gzip 压缩（Node 内置 zlib，不新增依赖）：只压文本类响应（首页 / CSS / JS / JSON），
+// 图片 webp 本身已压缩，不压。Render 免费版 CPU 只有 0.1 核，传输量小一点加载就快一点。
+const GZIP_TYPES = /^(text\/|application\/(json|javascript)|image\/svg\+xml)/;
+app.use((req, res, next) => {
+  const isTextAsset = req.path === '/' || /\.(html|css|js|json|svg)$/i.test(req.path);
+  if (!isTextAsset) return next();
+  if (!/\bgzip\b/.test(req.headers['accept-encoding'] || '')) return next();
+  const chunks = [];
+  const origWrite = res.write.bind(res);
+  const origEnd = res.end.bind(res);
+  res.write = function (chunk, encoding, cb) {
+    if (typeof encoding === 'function') { cb = encoding; encoding = undefined; }
+    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), encoding));
+    if (typeof cb === 'function') cb();
+    return true;
+  };
+  res.end = function (chunk, encoding, cb) {
+    if (typeof encoding === 'function') { cb = encoding; encoding = undefined; }
+    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), encoding));
+    const body = Buffer.concat(chunks);
+    const type = String(res.getHeader('Content-Type') || '');
+    if (!GZIP_TYPES.test(type) || body.length < 1024) {
+      origWrite(body);
+      return origEnd(cb);
+    }
+    zlib.gzip(body, (err, gz) => {
+      if (err || gz.length >= body.length) {
+        origWrite(body);
+        return origEnd(cb);
+      }
+      res.setHeader('Content-Encoding', 'gzip');
+      res.setHeader('Content-Length', gz.length);
+      res.setHeader('Vary', 'Accept-Encoding');
+      origWrite(gz);
+      origEnd(cb);
+    });
+  };
+  next();
+});
+
+// 静态资源：地图图片文件名固定、内容不变，给一年长缓存（immutable），重复打开不重新下载；
+// HTML/CSS/JS 保持默认 ETag 校验，部署更新后立即生效。
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    if (filePath.includes(`${path.sep}maps${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+}));
 app.get('/api/health', (req, res) => res.json({ ok: true, rooms: ROOMS.size }));
 
 const server = http.createServer(app);
